@@ -106,16 +106,16 @@ async def connection_handler(connection, path):
     try:
         init_msg = await connection.recv()
         print(init_msg)
+        if init_msg == "fitbit":
+            states.fitbit_connection = connection
+            print("fitbit connected")
+        elif init_msg == "ui":
+            states.ui_connection = connection
+            print("ui connected")
+        else:
+            print("couldn't identify connecting device...")
     except Exception as e:
         print(e)
-    if init_msg == "fitbit":
-        states.fitbit_connection = connection
-        print("fitbit connected")
-    elif init_msg == "ui":
-        states.ui_connection = connection
-        print("ui connected)")
-    else:
-        print("couldn't identify connecting device...")
     while True:
         #not really sure what to do here to keep the connection alive
         await asyncio.sleep(1)
@@ -181,9 +181,18 @@ async def data_handler():
                 states.fitbit_connection = None
                 continue
         if states.ui_connection:
-            ui_string = str(final)+"|"
-            await states.ui_connection.send(ui_string)
-        #start sending stuff
+            try:
+                ui_string = str(final)+"|"
+                await states.ui_connection.send(ui_string)
+                print(ui_string+" --> ui")
+            except (websockets.exceptions.ConnectionClosedOK, websockets.exceptions.ConnectionClosedError):
+                print("Connection with UI broken.")
+                states.ui_connection = None
+                continue
+            
+        if not states.fitbit_connection and not states.ui_connection:
+            #push final to database
+            pass
 
 
 #https://stackoverflow.com/questions/32054066/python-how-to-run-multiple-coroutines-concurrently-using-asyncio
