@@ -130,8 +130,8 @@ async def fitbit_handler():
                     fitbit_data_final = [str(fitbit_data['hr_only']),str(fitbit_data['pressure'])]
                     print(fitbit_data_final)
                     states.fitbit_queue.append(fitbit_data_final)
-        except websockets.exceptions.ConnectionClosedOK:
-            print("Connection with (something) broken.")
+        except (websockets.exceptions.ConnectionClosedOK, websockets.exceptions.ConnectionClosedError):
+            print("Connection with fitbit broken.")
             states.fitbit_connection = None
             continue
 
