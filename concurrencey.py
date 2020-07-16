@@ -49,7 +49,7 @@ async def send_periodically2():
             continue
 
 
-start_server = websockets.serve(connection_handler, 'localhost', 8765)
+start_server = websockets.serve(connection_handler, port=8765)
 asyncio.get_event_loop().run_until_complete(start_server)
 asyncio.ensure_future(send_periodically())  # before blocking call we schedule our coroutine for sending periodic messages
 asyncio.ensure_future(send_periodically2())
