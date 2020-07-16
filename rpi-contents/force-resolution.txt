@@ -1,0 +1,9 @@
+cd to root
+
+go cd boot
+
+sudo nano config.txt
+
+look at the lines uncommented
+
+1280x720
