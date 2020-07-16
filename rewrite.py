@@ -80,21 +80,21 @@ def determine_ports():
                 break
     else:
         print("No device available at /USB1.")
-    if s3 != None:
+    if states.s3 != None:
         while True:
-            c = str(s3.read_until()).split("|")
+            c = str(states.s3.read_until()).split("|")
             if len(c) < 2:
                 continue
             if c[1] == "TEMP":
-                states.assignments["TEMP"] = "s3"
+                states.assignments["TEMP"] = "states.s3"
                 print("/USB2 = TEMP")
                 break
             elif c[1] == "GPS":
-                states.assignments["GPS"] = "s3"
+                states.assignments["GPS"] = "states.s3"
                 print("/USB2 = GPS")
                 break
             elif c[1] == "DISP":
-                states.assignments["DISP"] = "s3"
+                states.assignments["DISP"] = "states.s3"
                 print("/USB2 = DISP")
                 break
     else:
@@ -103,39 +103,53 @@ def determine_ports():
 
 #figure out if the connecting websocket is either the fitbit or the client, adding them to the respective pool
 async def connection_handler(connection, path):
-    init_msg = await connection.recv()
-    if init_msg == "fitbit":
-        states.fitbit_connection = connection
-    elif init_msg == "ui":
-        states.ui_connection = connection
+    try:
+        init_msg = await connection.recv()
+        print(init_msg)
+        if init_msg == "fitbit":
+            states.fitbit_connection = connection
+            print("fitbit connected")
+        elif init_msg == "ui":
+            states.ui_connection = connection
+            print("ui connected")
+        else:
+            print("couldn't identify connecting device...")
+    except Exception as e:
+        print(e)
     while True:
-        msg = await connection.recv() #clears buffer? if so, this might be an issue
-        print(msg)
-        if msg is None:
-            break
+        #not really sure what to do here to keep the connection alive
+        await asyncio.sleep(1)
 
 async def fitbit_handler():
     while True:
-        if states.fitbit_connection:
-            fitbitRecieved = "{}"
-            fitbitRecieved = await states.fitbit_connection.recv()
-            if not fitbitRecieved:
-                print("Connection with fitbit broken.")
-                states.fitbit_connection = None
-            else:
-                fitbit_data = ast.literal_eval(fitbitRecieved)
-                fitbit_data_final = [str(fitbit_data['hr_only']),str(fitbit_data['pressure'])]
-                states.fitbit_queue.append(fitbit_data_final)
-#
+        await asyncio.sleep(1)
+        try:
+            if states.fitbit_connection:
+                fitbitRecieved = "{}"
+                fitbitRecieved = await states.fitbit_connection.recv()
+                print(fitbitRecieved+"> fitbit_handler")
+                if not fitbitRecieved:
+                    print("Connection with fitbit broken.")
+                    states.fitbit_connection = None
+                else:
+                    fitbit_data = ast.literal_eval(fitbitRecieved)
+                    fitbit_data_final = [str(fitbit_data['hr_only']),str(fitbit_data['pressure'])]
+                    print(fitbit_data_final)
+                    states.fitbit_queue.append(fitbit_data_final)
+        except (websockets.exceptions.ConnectionClosedOK, websockets.exceptions.ConnectionClosedError):
+            print("Connection with fitbit broken.")
+            states.fitbit_connection = None
+            continue
+
 async def data_handler():
     while True:
-        #await asyncio.sleep(1)  # switch to other code and continue execution in 5 seconds
+        await asyncio.sleep(1)  # switch to other code and continue execution in 5 seconds
         sensor_data = []
         final = {"timestamp":None,"fitbit_data":[],"sensor_data":[]}
         
-        temp_data = eval("str(%states.s.read_until())"%states.assignments["TEMP"]) if states.assignments["TEMP"] else "--|TEMP|--|--"
-        disp_data = eval("str(%states.s.read_until())"%states.assignments["DISP"]) if states.assignments["DISP"] else "--|DISP|--|--|--|--|--|--|--|--"
-        gps_data = eval("str(%states.s.read_until())"%states.assignments["GPS"]) if states.assignments["GPS"] else "--|GPS|--|--|--|--"
+        temp_data = eval("str(%s.read_until())"%states.assignments["TEMP"]) if states.assignments["TEMP"] else "--|TEMP|--|--"
+        disp_data = eval("str(%s.read_until())"%states.assignments["DISP"]) if states.assignments["DISP"] else "--|DISP|--|--|--|--|--|--|--|--"
+        gps_data = eval("str(%s.read_until())"%states.assignments["GPS"]) if states.assignments["GPS"] else "--|GPS|--|--|--|--"
         #latitude|longitude|hdop|satellite count
         #calculate the resultant on the pi or receiving client, whichever turns out to be better
         temp_parsed = temp_data.split("|")
@@ -158,19 +172,34 @@ async def data_handler():
         print(final)
         
         if states.fitbit_connection:
-            to_fitbit_string = str(sensor_data)
-            states.fitbit_connection.send(to_fitbit_string)
+            try:
+                to_fitbit_string = str(sensor_data)
+                await states.fitbit_connection.send(to_fitbit_string)
+                print(to_fitbit_string+" --> fitbit")
+            except websockets.exceptions.ConnectionClosedError:
+                print("Connection with fitbit broken.")
+                states.fitbit_connection = None
+                continue
         if states.ui_connection:
-            ui_string = str(final)+"|"
-            states.ui_connection.send(ui_string)
-        #start sending stuff
+            try:
+                ui_string = str(final)+"|"
+                await states.ui_connection.send(ui_string)
+                print(ui_string+" --> ui")
+            except (websockets.exceptions.ConnectionClosedOK, websockets.exceptions.ConnectionClosedError):
+                print("Connection with UI broken.")
+                states.ui_connection = None
+                continue
+            
+        if not states.fitbit_connection and not states.ui_connection:
+            #push final to database
+            pass
 
 
 #https://stackoverflow.com/questions/32054066/python-how-to-run-multiple-coroutines-concurrently-using-asyncio
 
 init_ports()
 determine_ports()
-start_server = websockets.serve(connection_handler, 'localhost', 8765) #,ping_timeout=None
+start_server = websockets.serve(connection_handler, port=8765) #,ping_timeout=None
 asyncio.get_event_loop().run_until_complete(start_server)
 asyncio.ensure_future(data_handler())  # run the other two functions in parallel
 asyncio.ensure_future(fitbit_handler())
