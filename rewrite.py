@@ -103,13 +103,19 @@ def determine_ports():
 
 #figure out if the connecting websocket is either the fitbit or the client, adding them to the respective pool
 async def connection_handler(connection, path):
-    init_msg = await connection.recv()
+    try:
+        init_msg = await connection.recv()
+        print(init_msg)
+    except Exception as e:
+        print(e)
     if init_msg == "fitbit":
         states.fitbit_connection = connection
+        print("fitbit connected")
     elif init_msg == "ui":
         states.ui_connection = connection
+        print("ui connected)")
     else:
-        states.fitbit_connection = connection
+        print("couldn't identify connecting device...")
     while True:
         #not really sure what to do here to keep the connection alive
         await asyncio.sleep(1)
